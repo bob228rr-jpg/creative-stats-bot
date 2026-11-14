@@ -4,8 +4,10 @@ import {
   normalizeOcrReportText,
   reportContent,
   reportImageFileId,
+  richMessageText,
   shouldRecognizeImage,
 } from "../lib/report-input.js";
+import { parseReport } from "../lib/parser.js";
 
 test("uses a forwarded media caption as report text", () => {
   assert.deepEqual(
@@ -16,6 +18,53 @@ test("uses a forwarded media caption as report text", () => {
       source: "caption",
     },
   );
+});
+
+test("reads a forwarded Telegram rich-message table as structured text", () => {
+  const richMessage = {
+    blocks: [
+      { type: "heading", text: [{ type: "bold", text: "📊 Моя статистика" }], size: 2 },
+      { type: "paragraph", text: "📅 14.11.26" },
+      {
+        type: "table",
+        is_bordered: true,
+        cells: [
+          ["Домен", "Лиды", "Работа", "Апрув", "Отказ", "Треш", "%"].map((text) => ({ text, is_header: true })),
+          [
+            { text: { type: "url", text: "blia.ashmoss.world", url: "https://blia.ashmoss.world" } },
+            { text: "4" },
+            { text: { type: "bold", text: "2" } },
+            { text: "1" },
+            { text: "0" },
+            { text: "0" },
+            { text: "25.0" },
+          ],
+          [{ text: { type: "bold", text: "Итого" } }, { text: "4" }, { text: "2" }, { text: "1" }, { text: "0" }],
+        ],
+      },
+    ],
+  };
+
+  const expected = [
+    "📊 Моя статистика",
+    "📅 14.11.26",
+    "Домен | Лиды | Работа | Апрув | Отказ | Треш | %",
+    "blia.ashmoss.world | 4 | 2 | 1 | 0 | 0 | 25.0",
+    "Итого | 4 | 2 | 1 | 0",
+  ].join("\n");
+  assert.equal(richMessageText(richMessage), expected);
+  assert.deepEqual(reportContent({ rich_message: richMessage }), { text: expected, entities: [], source: "rich" });
+  assert.deepEqual(parseReport(expected).entries, [
+    {
+      domain: "blia.ashmoss.world",
+      leads: 4,
+      work: 2,
+      approved: 1,
+      rejected: 0,
+      sourceLine: 4,
+      warnings: [],
+    },
+  ]);
 });
 
 test("selects the largest forwarded Telegram photo", () => {
