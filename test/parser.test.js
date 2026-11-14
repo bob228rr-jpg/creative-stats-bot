@@ -32,6 +32,45 @@ test("parses markdown table by localized headers and ignores extra columns", () 
   });
 });
 
+test("parses Telegram stats with trash and percent columns", () => {
+  const text = [
+    "📊 Моя статистика",
+    "",
+    "📅 14.11.26",
+    "",
+    "Домен Лиды Работа Апрув Отказ Треш %",
+    "",
+    "blia.ashmoss.world 4 2 1 0 0 25.0",
+    "",
+    "croumcast.hazelharbor.shop 8 2 1 2 3 12.5",
+    "",
+    "crythia.glenorbit.space 14 2 3 7 2 21.4",
+    "",
+    "eanour.deerhollow\\.shop 4 1 1 1 1 25.0",
+    "",
+    "prucryl.berrygrove.shop 1 1 0 0 0 0.0",
+    "",
+    "reamand.ivymarket.space 8 2 1 5 0 12.5",
+    "",
+    "Итого 39 10 7 15 6 17.9",
+  ].join("\n");
+
+  const result = parseReport(text);
+
+  assert.equal(result.errors.length, 0);
+  assert.deepEqual(
+    result.entries.map(({ domain, leads, work, approved, rejected }) => ({ domain, leads, work, approved, rejected })),
+    [
+      { domain: "blia.ashmoss.world", leads: 4, work: 2, approved: 1, rejected: 0 },
+      { domain: "croumcast.hazelharbor.shop", leads: 8, work: 2, approved: 1, rejected: 2 },
+      { domain: "crythia.glenorbit.space", leads: 14, work: 2, approved: 3, rejected: 7 },
+      { domain: "eanour.deerhollow.shop", leads: 4, work: 1, approved: 1, rejected: 1 },
+      { domain: "prucryl.berrygrove.shop", leads: 1, work: 1, approved: 0, rejected: 0 },
+      { domain: "reamand.ivymarket.space", leads: 8, work: 2, approved: 1, rejected: 5 },
+    ],
+  );
+});
+
 test("parses domain and metrics on separate lines", () => {
   const result = parseReport("a.example.com\n10 2 3 5");
   assert.equal(result.entries[0].approved, 3);
