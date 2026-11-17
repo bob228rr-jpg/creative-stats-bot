@@ -18,28 +18,48 @@ async function syncLayout() {
   assert(accounts.size > 0, "No account groups recognized on king sheet");
   const layout = await store.ensureSetup({ force: true });
   const verified = await store.api.spreadsheets.get({ spreadsheetId, ranges: [quote(main)],
-    fields: "sheets(properties(sheetId),conditionalFormats,data(rowData(values(formattedValue,userEnteredFormat(numberFormat)))))" });
+    fields: "sheets(properties(sheetId),conditionalFormats,data(rowData(values(formattedValue,effectiveValue,effectiveFormat(backgroundColor),userEnteredFormat(numberFormat,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy,borders)))))" });
   const sheet = verified.data.sheets[0];
   const rows = sheet.data[0].rowData;
   const headers = rows[layout.headerRow - 1].values.map(cell => cell.formattedValue);
   const timestamp = headers.indexOf("Оновлено: сьогодні"), kingColumn = headers.indexOf("Кінг"), flow = findFlowColumn(headers);
   assert(kingColumn >= 0 && timestamp >= 0);
-  assert(sheet.conditionalFormats?.some(rule => rule.ranges.some(range => range.startColumnIndex === flow) &&
-    rule.booleanRule?.condition?.values?.[0]?.userEnteredValue?.includes("TODAY()")));
-  let names = 0, clocks = 0, missing = 0;
+  const status = headers.indexOf("Статус"), statsStart = headers.indexOf("Сьогодні: Ліди");
+  assert(status >= 0 && statsStart >= 0);
+  assert(sheet.conditionalFormats?.some(rule => rule.ranges.some(range =>
+    !range.startColumnIndex && range.endColumnIndex === kingColumn + 1 && range.startRowIndex === layout.headerRow) &&
+    rule.booleanRule?.condition?.type === "CUSTOM_FORMULA"));
+  let names = 0, clocks = 0, missing = 0, inactive = 0;
   for (const row of rows.slice(layout.headerRow)) {
     const cells = row.values || [];
     const value = cells[timestamp]?.formattedValue;
     if (value) { assert.match(value, /^\d{1,2}:\d{2}$/); clocks++; }
     const id = cells[flow]?.formattedValue?.match(/(?:^|\s)(\d{6,24})(?=\s|$)/)?.[1];
     if (!id) continue;
+    for (const cell of cells.slice(statsStart, kingColumn + 1)) {
+      const format = cell.userEnteredFormat;
+      assert.equal(format?.horizontalAlignment, "CENTER");
+      assert.equal(format?.verticalAlignment, "MIDDLE");
+      assert.equal(format?.wrapStrategy, "WRAP");
+      assert.equal(format?.textFormat?.bold, true);
+      for (const edge of ["top", "bottom", "left", "right"]) assert.equal(format?.borders?.[edge]?.style, "SOLID");
+    }
+    if (!cells[status]?.effectiveValue?.boolValue) {
+      assert.equal(cells[kingColumn]?.formattedValue || "", "");
+      inactive++;
+      continue;
+    }
+    for (const cell of cells.slice(0, kingColumn + 1)) {
+      const color = cell.effectiveFormat?.backgroundColor;
+      assert.deepEqual([color?.red, color?.green, color?.blue].map(x => Math.round(255*x)), [219,196,255]);
+    }
     const match = accounts.get(id);
     if (match?.length === 1 && match[0].name) {
       assert.equal(cells[kingColumn]?.formattedValue, match[0].name);
       names++;
     } else missing++;
   }
-  console.log("Workbook verified", { names, clocks, missing, accounts: accounts.size });
+  console.log("Workbook verified", { names, clocks, missing, inactive });
 }
 
 syncLayout().catch(error => {

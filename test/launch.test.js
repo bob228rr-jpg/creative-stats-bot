@@ -29,6 +29,8 @@ test("writes both sheets together, skips unknown offer and preserves existing ro
   assert.equal((await store.addLaunch(launch)).row, 3);
   const writes = batch[0].flatMap(req => req.updateCells ? [req.updateCells] : []);
   assert.deepEqual(writes.filter(w => w.range.sheetId === 7).map(w => w.range.startColumnIndex), [2,3,4,5,7]);
+  assert.equal(writes.find(w => w.range.sheetId === 7 && w.range.startColumnIndex === 7)
+    .rows[0].values[0].userEnteredValue.formulaValue, '=IF($F3,"Віолетта Струкова","")');
   assert.equal(writes.at(-1).range.sheetId,9);
   assert.equal(writes.at(-1).range.startColumnIndex,5);
   mainRows.push(["","",launch.creative,launch.flow]);
