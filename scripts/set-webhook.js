@@ -13,6 +13,7 @@ const response = await fetch(`${base}/bot${process.env.BOT_TOKEN}/setWebhook`, {
     url: process.env.WEBHOOK_URL,
     secret_token: process.env.TELEGRAM_SECRET,
     allowed_updates: ["message", "callback_query"],
+    max_connections: 1,
     drop_pending_updates: false,
   }),
 });

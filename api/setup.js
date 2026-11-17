@@ -19,6 +19,7 @@ async function configureWebhook() {
     url,
     secret_token: config.telegramSecret,
     allowed_updates: ["message", "callback_query"],
+    max_connections: 1,
     drop_pending_updates: false,
   });
   const info = await telegram.call("getWebhookInfo", {});
