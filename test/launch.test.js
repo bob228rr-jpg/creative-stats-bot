@@ -7,7 +7,7 @@ import { kyivSheetDateTime } from "../lib/dates.js";
 const headers = ["Чиє крео", "Офер", "Назва крео", "Назва потоку", "Дата запуску", "Статус", "Коментар", "Кінг"];
 const id = "990000000000000011";
 const kingRows = [["Кинг1","Аккаунти1","назва зацепу","Кинг8","Аккаунти8","назва зацепу"],
-  ["9 PRO Hgu Hj","","","AF_85686 Віолетта Струкова Гео"], ["","100000011","", "",id]];
+  ["9 PRO Hgu Hj","","","AF_85686 Віолетта Струкова Гео"], ["","100000011","", "",id,"ТравСугШурК1"]];
 const input = name => parseLaunch(`${name} ${id} example.com`);
 test("offer codes, unknowns and exact account IDs", () => {
   for (const [code, offer] of Object.entries({Гем:"Геморой", Пап:"Папилломы", Нет:"Нетримання", Прост:"Простатит", Нейр:"Нейропатия", Суг:"Суглоби", Пох:"Похудалка", Хх:""})) {
@@ -22,12 +22,17 @@ test("writes both sheets together, skips unknown offer and preserves existing ro
   const store = Object.create(SheetsStore.prototype);
   store.config = { mainSheet: "Шур", spreadsheetId:"test" };
   store.ensureSetup = async () => ({ kingSheet:{ title:"Шур King", sheetId:9 }, headerRow:1, headers, mainSheetId:7, mainProperties:{gridProperties:{rowCount:100}} });
-  const batch = [], mainRows = [headers, ["","", "Старый","Старый 111111 old.example"]];
+  const batch = [], mainRows = [headers, ["","", "ТравСугШурК1",`ТравСугШурК1 ${id} old.example`]];
   store.api = { spreadsheets:{ values:{batchGet:async () => ({data:{valueRanges:[{values:mainRows},{values:kingRows}]}})},
     batchUpdate:async args => batch.push(args.requestBody.requests) } };
   const launch = input("НовШурК3");
   assert.equal((await store.addLaunch(launch)).row, 3);
   const writes = batch[0].flatMap(req => req.updateCells ? [req.updateCells] : []);
+  assert.ok(writes.filter(w => w.range.sheetId === 7).every(w => w.range.startRowIndex === 2));
+  assert.equal(writes.at(-1).rows[0].values[0].userEnteredValue.stringValue, launch.creative);
+  const mark = batch[0].find(req => req.repeatCell?.range.sheetId === 9).repeatCell;
+  assert.deepEqual(mark.range, { sheetId:9, startRowIndex:2, endRowIndex:3, startColumnIndex:4, endColumnIndex:5 });
+  assert.deepEqual(mark.cell.userEnteredFormat.backgroundColorStyle.rgbColor, { red:217/255, green:234/255, blue:211/255 });
   assert.deepEqual(writes.filter(w => w.range.sheetId === 7).map(w => w.range.startColumnIndex), [2,3,4,5,7]);
   assert.equal(writes.find(w => w.range.sheetId === 7 && w.range.startColumnIndex === 7)
     .rows[0].values[0].userEnteredValue.formulaValue, '=IF($F3,"Віолетта Струкова","")');
