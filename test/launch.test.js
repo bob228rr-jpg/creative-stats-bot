@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { indexKingAccounts, offerForCreative, parseLaunch } from "../lib/launch.js";
 import { SheetsStore } from "../lib/sheets.js";
 import { kyivSheetDateTime } from "../lib/dates.js";
+import { handleIncomingMessage } from "../lib/bot.js";
 
 const headers = ["Чиє крео", "Офер", "Назва крео", "Назва потоку", "Дата запуску", "Статус", "Коментар", "Кінг"];
 const id = "990000000000000011";
@@ -30,9 +31,7 @@ test("writes both sheets together, skips unknown offer and preserves existing ro
   const writes = batch[0].flatMap(req => req.updateCells ? [req.updateCells] : []);
   assert.ok(writes.filter(w => w.range.sheetId === 7).every(w => w.range.startRowIndex === 2));
   assert.equal(writes.at(-1).rows[0].values[0].userEnteredValue.stringValue, launch.creative);
-  const mark = batch[0].find(req => req.repeatCell?.range.sheetId === 9).repeatCell;
-  assert.deepEqual(mark.range, { sheetId:9, startRowIndex:2, endRowIndex:3, startColumnIndex:4, endColumnIndex:5 });
-  assert.deepEqual(mark.cell.userEnteredFormat.backgroundColorStyle.rgbColor, { red:217/255, green:234/255, blue:211/255 });
+  assert.ok(!batch[0].some(req => req.repeatCell?.range.sheetId === 9));
   assert.deepEqual(writes.filter(w => w.range.sheetId === 7).map(w => w.range.startColumnIndex), [2,3,4,5,7]);
   assert.equal(writes.find(w => w.range.sheetId === 7 && w.range.startColumnIndex === 7)
     .rows[0].values[0].userEnteredValue.formulaValue, '=IF($F3,"Віолетта Струкова","")');
@@ -43,6 +42,32 @@ test("writes both sheets together, skips unknown offer and preserves existing ro
   assert.equal(batch.length,2);
   await assert.rejects(store.addLaunch({...launch,id:"00000000"}), /Не нашёл/);
   assert.equal(batch.length,2);
+});
+
+test("launch prompt survives requests, handles pasted Unicode and leaves the session on save or cancel", async () => {
+  const replies = [], saved = [];
+  let session;
+  const store = {
+    getSession: async () => session,
+    setSession: async (_, period) => { session = { period }; },
+    addLaunch: async launch => { saved.push(launch); return { isNew: true, row: 4 }; },
+  };
+  const receive = text => handleIncomingMessage({
+    update: { message: { text, chat: { id: 1 }, from: { id: 1 } } },
+    telegram: { sendMessage: async (_, reply) => replies.push(reply) }, store,
+  });
+  await receive("➕ Добавить запуск");
+  await receive("ТравНейрШурК2 1234 dunevale.shop");
+  assert.match(replies.at(-1), /ID кабинета/);
+  assert.equal(session.period, "launch");
+  await receive("ТравНейрШурК2".normalize("NFD") + "\u00a0949128094885036\ndune\u200bvale.shop");
+  assert.equal(saved[0].flow, "ТравНейрШурК2 949128094885036 dunevale.shop");
+  assert.equal(session.period, "");
+  await receive("/launch");
+  await receive("/cancel");
+  assert.equal(session.period, "");
+  await receive("ТравНейрШурК2\u200b949128094885036\u200bdunevale.shop");
+  assert.equal(saved.length, 2);
 });
 test("Kyiv sheet serial crosses midnight and respects summer time", () => {
   assert.equal(kyivSheetDateTime("2026-07-14T21:00:00Z"), Date.UTC(2026,6,15)/86400000 + 25569);

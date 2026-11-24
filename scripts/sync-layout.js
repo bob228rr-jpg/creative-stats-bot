@@ -30,6 +30,7 @@ async function syncLayout() {
     !range.startColumnIndex && range.endColumnIndex === kingColumn + 1 && range.startRowIndex === layout.headerRow) &&
     rule.booleanRule?.condition?.type === "CUSTOM_FORMULA"));
   let names = 0, clocks = 0, missing = 0, inactive = 0;
+  const activeIds = new Set();
   for (const row of rows.slice(layout.headerRow)) {
     const cells = row.values || [];
     const value = cells[timestamp]?.formattedValue;
@@ -53,13 +54,28 @@ async function syncLayout() {
       const color = cell.effectiveFormat?.backgroundColor;
       assert.deepEqual([color?.red, color?.green, color?.blue].map(x => Math.round(255*x)), [219,196,255]);
     }
+    activeIds.add(id);
     const match = accounts.get(id);
     if (match?.length === 1 && match[0].name) {
       assert.equal(cells[kingColumn]?.formattedValue, match[0].name);
       names++;
     } else missing++;
   }
-  console.log("Workbook verified", { names, clocks, missing, inactive });
+  const kingGrid = await store.api.spreadsheets.get({ spreadsheetId, ranges: [quote(king)],
+    fields: "sheets(conditionalFormats,data(rowData(values(formattedValue,effectiveFormat(backgroundColor)))))" });
+  const kingTab = kingGrid.data.sheets[0];
+  assert(kingTab.conditionalFormats?.some(rule => rule.booleanRule?.condition?.values?.[0]?.userEnteredValue.includes("creative-stats:king-status")));
+  let green = 0, other = 0;
+  for (const [id, hits] of accounts) {
+    for (const {rowIndex, columnIndex} of hits) {
+      const cell = kingTab.data[0].rowData[rowIndex].values[columnIndex];
+      const rgb = cell.effectiveFormat?.backgroundColor || {};
+      const isGreen = [rgb.red, rgb.green, rgb.blue].map(value => Math.round(255 * value)).join(",") === "217,234,211";
+      assert.equal(isGreen, activeIds.has(id), `Unexpected color at row ${rowIndex + 1}, column ${columnIndex + 1}`);
+      if (isGreen) green++; else other++;
+    }
+  }
+  console.log("Workbook verified", { names, clocks, missing, inactive, green, other });
 }
 
 syncLayout().catch(error => {
