@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { indexKingAccounts, offerForCreative, parseLaunch } from "../lib/launch.js";
-import { SheetsStore } from "../lib/sheets.js";
+import { MAIN_STATS_HEADERS, SheetsStore } from "../lib/sheets.js";
 import { kyivSheetDateTime } from "../lib/dates.js";
 import { handleIncomingMessage } from "../lib/bot.js";
 
@@ -72,4 +72,34 @@ test("launch prompt survives requests, handles pasted Unicode and leaves the ses
 test("Kyiv sheet serial crosses midnight and respects summer time", () => {
   assert.equal(kyivSheetDateTime("2026-07-14T21:00:00Z"), Date.UTC(2026,6,15)/86400000 + 25569);
   assert.equal(kyivSheetDateTime("2026-11-17T22:00:00Z"), Date.UTC(2026,10,18)/86400000 + 25569);
+});
+
+test("new launches style the stats row without inheriting its neighbour's fill", async () => {
+  const titles = [...headers.slice(0, -1), ...MAIN_STATS_HEADERS, "Кінг"];
+  const firstStat = titles.indexOf(MAIN_STATS_HEADERS[0]);
+  for (const mainTable of [undefined, { range: { endRowIndex: 10 } }]) {
+    const store = Object.create(SheetsStore.prototype);
+    store.config = { mainSheet: "Шур", spreadsheetId: "test" };
+    store.ensureSetup = async () => ({ mainSheetId: 7, kingSheet: { title: "Шур King", sheetId: 9 },
+      headerRow: 1, headers: titles, mainTable, mainProperties: { gridProperties: { rowCount: 100 } } });
+    let requests;
+    store.api = { spreadsheets: { values: { batchGet: async () => ({ data: { valueRanges: [
+      { values: [titles, ["", "", "Old", "Old 100000011 old.example"]] }, { values: kingRows },
+    ] } }) }, batchUpdate: async ({requestBody}) => { requests = requestBody.requests; } } };
+    await store.addLaunch(input("НовШурК3"));
+    for (const {copyPaste} of requests) {
+      if (copyPaste?.pasteType === "PASTE_FORMAT") assert.ok(copyPaste.destination.endColumnIndex <= firstStat);
+    }
+    const formats = requests.map(r => r.repeatCell).filter(r => r?.range.startColumnIndex >= firstStat);
+    assert.equal(formats.length, 7);
+    for (const r of formats) {
+      assert.equal(r.range.startRowIndex, 2);
+      assert.equal(r.cell.userEnteredFormat.textFormat.bold, true);
+      assert.equal(r.cell.userEnteredFormat.horizontalAlignment, "CENTER");
+      assert.equal(r.cell.userEnteredFormat.borders.top.style, "SOLID");
+      assert.doesNotMatch(r.fields, /backgroundColor/);
+    }
+    assert.equal(formats[4].cell.userEnteredFormat.numberFormat.pattern, "0.0%");
+    assert.equal(formats[5].cell.userEnteredFormat.numberFormat.pattern, "hh:mm");
+  }
 });
