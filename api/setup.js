@@ -50,7 +50,7 @@ export default async function handler(req, res) {
   }
   try {
     const body = parseBody(req.body);
-    const status = await getSheetsStore().status();
+    const status = await getSheetsStore().status({ configure: true });
     const webhook = body.configureWebhook ? await configureWebhook() : undefined;
     res.statusCode = 200;
     res.end(JSON.stringify({ ...status, webhook }));
