@@ -47,3 +47,34 @@ test("technical storage sheets stay out of the visible tab bar", () => {
     "_BOT_UPDATES",
   ]);
 });
+
+test("even a forced setup assigns widths only to columns it just created", async () => {
+  const store = new SheetsStore({ mainSheet: "Шур", spreadsheetId: "column-width-test" });
+  const headers = ["Назва потоку", "Статус", "Кінг", ...MAIN_STATS_HEADERS.slice(0, -1)];
+  const sheets = ["Шур", ...HIDDEN_TECHNICAL_SHEETS].map((title, sheetId) => ({
+    properties: { title, sheetId, hidden: sheetId > 0 },
+  }));
+  const dimensions = [];
+  store.api = { spreadsheets: {
+    get: async () => ({ data: { properties: { title: "test" }, sheets } }),
+    batchUpdate: async ({ requestBody }) => {
+      for (const request of requestBody.requests) {
+        if (request.updateDimensionProperties) dimensions.push(request.updateDimensionProperties);
+        assert.equal(request.autoResizeDimensions, undefined);
+      }
+    },
+    values: {
+      get: async () => ({ data: { values: [[...headers]] } }),
+      update: async ({ requestBody }) => { headers.push(...requestBody.values[0]); },
+      batchGet: async () => ({ data: { valueRanges: [{}] } }),
+      batchUpdate: async () => {},
+    },
+  } };
+  await store.ensureSetup({ force: true });
+  assert.equal(dimensions.length, 1);
+  assert.deepEqual(dimensions[0].range, { sheetId: 0, dimension: "COLUMNS", startIndex: 8, endIndex: 9 });
+  assert.equal(dimensions[0].properties.pixelSize, 84);
+  dimensions.length = 0;
+  await store.ensureSetup({ force: true });
+  assert.deepEqual(dimensions, []);
+});
